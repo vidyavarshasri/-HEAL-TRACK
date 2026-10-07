@@ -1,0 +1,1 @@
+- [Vite React cache](vite-react-cache.md) — stale artifact prebundles can preserve old React paths after the monorepo catalog changes.

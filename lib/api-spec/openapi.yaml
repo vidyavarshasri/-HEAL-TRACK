@@ -3,13 +3,19 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Private wound-tracking and time-limited report-sharing API.
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: wounds
+    description: Patient-owned wound records and symptom updates
+  - name: sharing
+    description: Explicitly authorized, expiring read-only reports
+  - name: storage
+    description: Private wound-image uploads
 paths:
   /healthz:
     get:
@@ -24,13 +30,518 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /dashboard:
+    get:
+      operationId: getDashboard
+      tags: [wounds]
+      summary: Get the signed-in patient's dashboard overview
+      security:
+        - clerkSession: []
+      responses:
+        "200":
+          description: Dashboard counts and recent updates
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Dashboard"
+  /wounds:
+    get:
+      operationId: listWounds
+      tags: [wounds]
+      summary: List the signed-in patient's wounds
+      security:
+        - clerkSession: []
+      responses:
+        "200":
+          description: Patient-owned wounds
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Wound"
+    post:
+      operationId: createWound
+      tags: [wounds]
+      summary: Create a wound record
+      security:
+        - clerkSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WoundInput"
+      responses:
+        "201":
+          description: Wound created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Wound"
+  /wounds/{id}:
+    get:
+      operationId: getWound
+      tags: [wounds]
+      summary: Get one patient-owned wound
+      security:
+        - clerkSession: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Wound record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Wound"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /wounds/{id}/updates:
+    get:
+      operationId: listWoundUpdates
+      tags: [wounds]
+      summary: List updates for a patient-owned wound
+      security:
+        - clerkSession: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Wound updates ordered newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WoundUpdate"
+    post:
+      operationId: createWoundUpdate
+      tags: [wounds]
+      summary: Add an immutable symptom and image update
+      security:
+        - clerkSession: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WoundUpdateInput"
+      responses:
+        "201":
+          description: Update saved with a symptom-based risk-awareness level
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WoundUpdate"
+  /wounds/{id}/shares:
+    post:
+      operationId: createWoundShare
+      tags: [sharing]
+      summary: Create a time-limited report after explicit patient authorization
+      security:
+        - clerkSession: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WoundShareInput"
+      responses:
+        "201":
+          description: Share link created; raw token is returned only once
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WoundShareCreated"
+  /wounds/{id}/shares/{shareId}:
+    delete:
+      operationId: revokeWoundShare
+      tags: [sharing]
+      summary: Revoke a patient-owned share link
+      security:
+        - clerkSession: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: shareId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Share link revoked
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /shared-reports/{token}:
+    get:
+      operationId: getSharedReport
+      tags: [sharing]
+      summary: View an authorized report using its bearer token
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 32
+      responses:
+        "200":
+          description: Read-only report while the token remains valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SharedReport"
+        "404":
+          description: Link expired, revoked, or invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /storage/uploads/request-url:
+    post:
+      operationId: requestUploadUrl
+      tags: [storage]
+      summary: Request a private image upload URL
+      description: Uploads are private and linked to the signed-in owner.
+      security:
+        - clerkSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UploadUrlInput"
+      responses:
+        "200":
+          description: Direct upload URL and private object path
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadUrl"
+  /storage/objects/{objectPath}:
+    get:
+      operationId: getPrivateStorageObject
+      tags: [storage]
+      summary: Read an image owned by the signed-in patient
+      description: Serves a previously uploaded private image after owner and ACL checks.
+      security:
+        - clerkSession: []
+      parameters:
+        - name: objectPath
+          in: path
+          required: true
+          schema: { type: string }
+          description: Remaining object path segments, such as uploads/{uuid}.
+      responses:
+        "200":
+          description: Private image bytes.
+          content:
+            image/jpeg:
+              schema: { type: string, format: binary }
+            image/png:
+              schema: { type: string, format: binary }
+            image/webp:
+              schema: { type: string, format: binary }
+        "401":
+          description: Authentication is required.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "404":
+          description: Image is unavailable to this user.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  /storage/shared-reports/{token}/images/{imageId}:
+    get:
+      operationId: getSharedReportImage
+      tags: [storage]
+      summary: Read an image included in an active report link
+      description: Access ends when its report link expires or is revoked.
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema: { type: string, minLength: 32, maxLength: 128 }
+        - name: imageId
+          in: path
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 512 }
+      responses:
+        "200":
+          description: Shared image bytes.
+          content:
+            image/jpeg:
+              schema: { type: string, format: binary }
+            image/png:
+              schema: { type: string, format: binary }
+            image/webp:
+              schema: { type: string, format: binary }
+        "404":
+          description: Report image is unavailable.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
 components:
+  securitySchemes:
+    clerkSession:
+      type: apiKey
+      in: cookie
+      name: __session
   schemas:
     HealthStatus:
       type: object
       properties:
         status:
           type: string
+      required: [status]
+    ErrorEnvelope:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
+    RiskLevel:
+      type: string
+      enum: [stable, monitor, clinical_review, urgent]
+    SymptomLevel:
+      type: string
+      enum: [none, mild, moderate, severe, unknown]
+    Wound:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        bodySite: { type: string }
+        createdAt: { type: string, format: date-time }
+        updateCount: { type: integer }
+        latestUpdate:
+          anyOf:
+            - $ref: "#/components/schemas/WoundUpdate"
+            - type: "null"
+      required: [id, name, bodySite, createdAt, updateCount, latestUpdate]
+    WoundInput:
+      type: object
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        bodySite: { type: string, minLength: 1, maxLength: 100 }
+      required: [name, bodySite]
+    WoundUpdate:
+      type: object
+      properties:
+        id: { type: integer }
+        woundId: { type: integer }
+        createdAt: { type: string, format: date-time }
+        painLevel: { type: integer, minimum: 0, maximum: 10 }
+        swelling: { $ref: "#/components/schemas/SymptomLevel" }
+        redness: { $ref: "#/components/schemas/SymptomLevel" }
+        discharge: { $ref: "#/components/schemas/SymptomLevel" }
+        bleeding: { type: boolean }
+        fever: { type: boolean }
+        odor: { type: boolean }
+        rapidWorsening: { type: boolean }
+        notes: { type: ["string", "null"] }
+        transcription: { type: ["string", "null"] }
+        imagePaths:
+          type: array
+          items: { type: string }
+        riskLevel: { $ref: "#/components/schemas/RiskLevel" }
+        riskReasons:
+          type: array
+          items: { type: string }
       required:
-        - status
-
+        - id
+        - woundId
+        - createdAt
+        - painLevel
+        - swelling
+        - redness
+        - discharge
+        - bleeding
+        - fever
+        - odor
+        - rapidWorsening
+        - notes
+        - transcription
+        - imagePaths
+        - riskLevel
+        - riskReasons
+    WoundUpdateInput:
+      type: object
+      properties:
+        painLevel: { type: integer, minimum: 0, maximum: 10 }
+        swelling: { $ref: "#/components/schemas/SymptomLevel" }
+        redness: { $ref: "#/components/schemas/SymptomLevel" }
+        discharge: { $ref: "#/components/schemas/SymptomLevel" }
+        bleeding: { type: boolean }
+        fever: { type: boolean }
+        odor: { type: boolean }
+        rapidWorsening: { type: boolean }
+        notes: { type: ["string", "null"], maxLength: 3000 }
+        transcription: { type: ["string", "null"], maxLength: 3000 }
+        imagePaths:
+          type: array
+          maxItems: 3
+          items: { type: string }
+      required:
+        - painLevel
+        - swelling
+        - redness
+        - discharge
+        - bleeding
+        - fever
+        - odor
+        - rapidWorsening
+        - imagePaths
+    Dashboard:
+      type: object
+      properties:
+        woundCount: { type: integer }
+        updateCount: { type: integer }
+        latestUpdate:
+          anyOf:
+            - $ref: "#/components/schemas/WoundUpdate"
+            - type: "null"
+        wounds:
+          type: array
+          items: { $ref: "#/components/schemas/Wound" }
+      required: [woundCount, updateCount, latestUpdate, wounds]
+    WoundShareInput:
+      type: object
+      properties:
+        includeSymptoms: { type: boolean }
+        includeNotes: { type: boolean }
+        includeImages: { type: boolean }
+        expiresInHours: { type: integer, enum: [1, 24, 72, 168, 720] }
+        updateIds:
+          type: array
+          maxItems: 100
+          items: { type: integer }
+      required: [includeSymptoms, includeNotes, includeImages, expiresInHours]
+    WoundShareCreated:
+      type: object
+      properties:
+        id: { type: integer }
+        token: { type: string }
+        expiresAt: { type: string, format: date-time }
+      required: [id, token, expiresAt]
+    SharedReport:
+      type: object
+      properties:
+        woundName: { type: string }
+        bodySite: { type: string }
+        generatedAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+        includeSymptoms: { type: boolean }
+        includeNotes: { type: boolean }
+        includeImages: { type: boolean }
+        updates:
+          type: array
+          items: { $ref: "#/components/schemas/SharedReportUpdate" }
+        riskDisclaimer: { type: string }
+      required:
+        - woundName
+        - bodySite
+        - generatedAt
+        - expiresAt
+        - includeSymptoms
+        - includeNotes
+        - includeImages
+        - updates
+        - riskDisclaimer
+    SharedReportUpdate:
+      type: object
+      properties:
+        id: { type: integer }
+        createdAt: { type: string, format: date-time }
+        painLevel: { type: ["integer", "null"], minimum: 0, maximum: 10 }
+        swelling:
+          anyOf:
+            - $ref: "#/components/schemas/SymptomLevel"
+            - type: "null"
+        redness:
+          anyOf:
+            - $ref: "#/components/schemas/SymptomLevel"
+            - type: "null"
+        discharge:
+          anyOf:
+            - $ref: "#/components/schemas/SymptomLevel"
+            - type: "null"
+        bleeding: { type: ["boolean", "null"] }
+        fever: { type: ["boolean", "null"] }
+        odor: { type: ["boolean", "null"] }
+        rapidWorsening: { type: ["boolean", "null"] }
+        notes: { type: ["string", "null"] }
+        transcription: { type: ["string", "null"] }
+        imagePaths:
+          type: array
+          items: { type: string }
+        riskLevel:
+          anyOf:
+            - $ref: "#/components/schemas/RiskLevel"
+            - type: "null"
+        riskReasons:
+          type: array
+          items: { type: string }
+      required:
+        - id
+        - createdAt
+        - painLevel
+        - swelling
+        - redness
+        - discharge
+        - bleeding
+        - fever
+        - odor
+        - rapidWorsening
+        - notes
+        - transcription
+        - imagePaths
+        - riskLevel
+        - riskReasons
+    UploadUrlInput:
+      type: object
+      properties:
+        name: { type: string, minLength: 1, maxLength: 255 }
+        size: { type: integer, minimum: 1, maximum: 10485760 }
+        contentType: { type: string, enum: [image/jpeg, image/png, image/webp] }
+      required: [name, size, contentType]
+    UploadUrl:
+      type: object
+      properties:
+        uploadURL: { type: string, format: uri }
+        objectPath: { type: string }
+      required: [uploadURL, objectPath]

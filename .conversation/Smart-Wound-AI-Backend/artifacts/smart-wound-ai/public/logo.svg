@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 48" fill="none">
+  <rect x="1" y="1" width="46" height="46" rx="14" fill="#2C6D64"/>
+  <path d="M7.5 24h8l4-8.5 7.2 17 4.2-10h8" stroke="#F7F3E8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="58" y="24" fill="#203A39" font-family="Manrope, sans-serif" font-size="18" font-weight="800" letter-spacing="-0.6">smart wound</text>
+  <text x="59" y="38" fill="#73817B" font-family="DM Sans, sans-serif" font-size="7" font-weight="700" letter-spacing="1.25">PRIVATE HEALTH JOURNAL</text>
+</svg>

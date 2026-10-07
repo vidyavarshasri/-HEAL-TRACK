@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Smart Wound AI"
+description = "A private wound-progress tracker where people record symptoms and photos, monitor symptom-based risk prompts, and share selected history through expiring read-only reports."
+version = "1.0.0"
+id = "artifacts/smart-wound-ai"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 20297
+
+[services.development]
+run = "pnpm --filter @workspace/smart-wound-ai run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/smart-wound-ai", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/smart-wound-ai/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "20297"
+BASE_PATH = "/"
